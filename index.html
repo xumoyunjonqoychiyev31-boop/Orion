@@ -1,0 +1,486 @@
+
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#080d1b">
+<title>ORION AI</title>
+
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;background:#080d1b;color:#fff;
+  font-family:Arial,sans-serif
+}
+header{text-align:center;padding:18px;border-bottom:1px solid #25334b}
+header h2{margin:0;color:#72e5ff;letter-spacing:4px}
+header p{font-size:12px;color:#9aabc5}
+main{max-width:600px;margin:auto;padding:15px}
+.avatar{
+  height:280px;overflow:hidden;border-radius:22px;
+  background:radial-gradient(ellipse,#19385c,#080d1b 72%);
+  border:1px solid #28466c
+}
+#avatar{width:100%;height:100%;display:block}
+.status{text-align:center;color:#72e5ff;font-size:13px;padding:12px}
+.chat{
+  height:190px;overflow-y:auto;padding:12px;
+  background:#111a2b;border:1px solid #25334b;border-radius:16px
+}
+.msg{padding:10px 12px;border-radius:12px;margin:8px 0;
+  max-width:90%;font-size:14px;line-height:1.5;white-space:pre-wrap}
+.bot{background:#1c2e49}
+.user{background:#075a72;margin-left:auto}
+.controls{display:flex;gap:8px;margin-top:12px}
+input{
+  width:100%;min-width:0;flex:1;padding:13px;
+  color:white;background:#111a2b;border:1px solid #344761;
+  border-radius:12px;font-size:15px
+}
+button{
+  border:0;border-radius:12px;padding:12px;
+  background:#176b91;color:white;font-size:14px;cursor:pointer
+}
+#activate{width:100%;margin:12px 0;background:#7251d5;font-weight:bold}
+.panel{margin-top:14px;padding:14px;border-radius:16px;
+  background:#111a2b;border:1px solid #25334b}
+.panel h3{font-size:15px;margin:0 0 12px}
+.small{font-size:12px;color:#9aabc5;line-height:1.6}
+#video iframe{width:100%;height:220px;border:0;border-radius:12px}
+.quick{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.quick button{background:#25344d}
+a{color:#72e5ff}
+</style>
+</head>
+
+<body>
+<header>
+  <h2>ORION AI</h2>
+  <p>SENING SHAXSIY VIRTUAL YORDAMCHING</p>
+</header>
+
+<main>
+  <div class="avatar"><canvas id="avatar"></canvas></div>
+  <div class="status" id="status">● Orion hali faollashtirilmagan</div>
+
+  <button id="activate">🎙 ORIONNI FAOLLASHTIRISH</button>
+
+  <div class="chat" id="chat">
+    <div class="msg bot">
+      Salom! Men Orionman. Meni “Orion” deb chaqir,
+      keyin savolingni ayt. Masalan: “Orion, YouTube'da
+      musiqa qo‘y”.
+    </div>
+  </div>
+
+  <div class="controls">
+    <input id="input" placeholder="Bu yerga ham yozishing mumkin...">
+    <button id="send">➤</button>
+  </div>
+
+  <div class="quick">
+    <button onclick="command('Salom')">Salom</button>
+    <button onclick="command('Soat nechchi?')">🕒 Soat</button>
+    <button onclick="command('YouTube da musiqa qo‘y')">🎵 Musiqa</button>
+  </div>
+
+  <div class="panel">
+    <h3>▶ YouTube oynasi</h3>
+    <div id="video">
+      <p class="small">Buyruq orqali musiqa qidir yoki YouTube havolasini yubor.</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Holati</h3>
+    <p class="small">
+      Mikrofon faqat ruxsat berilganda ishlaydi.
+      Sayt barcha telefon ilovalarini boshqara olmaydi.
+      To‘liq AI uchun server orqali AI API ulash kerak.
+    </p>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+<script>
+const $ = id => document.getElementById(id);
+const chat = $("chat");
+const statusEl = $("status");
+
+function addMessage(text,who="bot"){
+  const d=document.createElement("div");
+  d.className="msg "+who;
+  d.textContent=text;
+  chat.appendChild(d);
+  chat.scrollTop=chat.scrollHeight;
+}
+
+function speak(text){
+  if(!("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang="uz-UZ";
+  u.rate=1;
+  u.onend=()=>{
+    if(activated) statusEl.textContent='● “Orion” deb chaqir';
+  };
+  speechSynthesis.speak(u);
+}
+
+function youtube(query){
+  const url="https://www.youtube.com/results?search_query="
+    +encodeURIComponent(query);
+  const box=$("video");
+  box.replaceChildren();
+
+  const p=document.createElement("p");
+  p.className="small";
+  p.textContent="YouTube qidiruvi: "+query;
+  box.appendChild(p);
+
+  const a=document.createElement("a");
+  a.href=url;
+  a.target="_blank";
+  a.rel="noopener noreferrer";
+  a.textContent="▶ YouTube natijalarini ochish";
+  box.appendChild(a);
+
+  return "YouTube'da "+query+" qidiruvini tayyorladim.";
+}
+
+function embedVideo(raw){
+  try{
+    const u=new URL(raw);
+    let id="";
+
+    if(u.hostname==="youtu.be") id=u.pathname.slice(1);
+    else if(
+      u.hostname==="youtube.com" ||
+      u.hostname.endsWith(".youtube.com") ||
+      u.hostname==="youtube-nocookie.com"
+    ){
+      if(u.pathname==="/watch") id=u.searchParams.get("v")||"";
+      else if(/^\/(embed|shorts)\/[\w-]+/.test(u.pathname))
+        id=u.pathname.split("/")[2];
+    }
+
+    if(!/^[\w-]{11}$/.test(id)) return false;
+
+    const frame=document.createElement("iframe");
+    frame.src="https://www.youtube-nocookie.com/embed/"+id;
+    frame.title="YouTube video";
+    frame.allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+    frame.allowFullscreen=true;
+
+    $("video").replaceChildren(frame);
+    return true;
+  }catch(e){return false}
+}
+
+function answer(text){
+  const t=text.toLowerCase().trim();
+
+  const urls=text.match(/https?:\/\/[^\s]+/g)||[];
+  for(const raw of urls){
+    if(embedVideo(raw)) return "Videoni kichik oynada ochdim.";
+  }
+
+  if(
+    (t.includes("youtube")||t.includes("musiqa")||
+     t.includes("qo‘shiq")||t.includes("qoshiq")) &&
+    (t.includes("qo‘y")||t.includes("qoy")||t.includes("qo'y")||
+     t.includes("qidir")||t.includes("och")||t.includes("qo'yib"))
+  ){
+    let q=text
+      .replace(/https?:\/\/[^\s]+/g,"")
+      .replace(/youtube/ig,"")
+      .replace(/musiqa/ig,"")
+      .replace(/qo‘shiq|qoshiq/ig,"")
+      .replace(/qo‘y|qoy|qo'y|qidir|och|qo‘yib/ig,"")
+      .trim();
+
+    return youtube(q||"mashhur musiqalar");
+  }
+
+  if(t.includes("salom")) return "Salom! Qanday yordam beray?";
+  if(t.includes("kimsan")) return "Men Orion, virtual yordamchingman.";
+  if(t.includes("rahmat")) return "Arzimaydi! Yana nima qilay?";
+  if(t.includes("soat"))
+    return "Hozir soat "+new Date().toLocaleTimeString("uz-UZ");
+  if(t.includes("sana")||t.includes("bugun"))
+    return "Bugungi sana: "+new Date().toLocaleDateString("uz-UZ");
+  if(t.includes("hazil"))
+    return "Nega kompyuter sovqotmaydi? Chunki uning Windows oynalari bor!";
+  if(t.includes("youtube"))
+    return youtube("mashhur musiqalar");
+
+  return "Bu savolga javob berish uchun menga AI xizmatini ulash kerak. Hozircha vaqt, sana va oddiy buyruqlarni bajara olaman.";
+}
+
+function command(text){
+  if(!text||!text.trim()) return;
+  addMessage(text,"user");
+  statusEl.textContent="● Buyruq bajarilmoqda...";
+  const reply=answer(text);
+  addMessage(reply);
+  speak(reply);
+}
+
+$("send").onclick=()=>{
+  command($("input").value);
+  $("input").value="";
+};
+
+$("input").addEventListener("keydown",e=>{
+  if(e.key==="Enter"){
+    command($("input").value);
+    $("input").value="";
+  }
+});
+
+// Ismni tanish orqali uyg‘onish
+const Recognition=window.SpeechRecognition||
+                  window.webkitSpeechRecognition;
+
+let activated=false;
+let wakeRecognition=null;
+let listening=false;
+let busy=false;
+let retryTimer=null;
+
+function startWakeWord(){
+  if(!activated||!Recognition||listening||busy||
+     document.visibilityState!=="visible") return;
+
+  try{
+    wakeRecognition=new Recognition();
+    wakeRecognition.lang="uz-UZ";
+    wakeRecognition.continuous=true;
+    wakeRecognition.interimResults=false;
+
+    wakeRecognition.onstart=()=>{
+      listening=true;
+      statusEl.textContent='● “Orion” deb chaqir';
+    };
+
+    wakeRecognition.onresult=e=>{
+      const result=e.results[e.results.length-1];
+      if(!result.isFinal) return;
+
+      const text=result[0].transcript.toLowerCase().trim();
+      const match=text.match(/\borion\b/i);
+
+      if(match){
+        const rest=text.replace(/\borion\b/i,"").trim();
+        busy=true;
+        listening=false;
+
+        try{wakeRecognition.stop()}catch(e){}
+
+        if(rest.length>0){
+          command(rest);
+          busy=false;
+          scheduleRestart();
+        }else{
+          statusEl.textContent="● Eshitaman, gapir...";
+          listenForCommand();
+        }
+      }
+    };
+
+    wakeRecognition.onerror=()=>{
+      listening=false;
+    };
+
+    wakeRecognition.onend=()=>{
+      listening=false;
+      if(activated&&!busy) scheduleRestart();
+    };
+
+    wakeRecognition.start();
+  }catch(e){
+    listening=false;
+    scheduleRestart();
+  }
+}
+
+function scheduleRestart(){
+  clearTimeout(retryTimer);
+  if(!activated||busy) return;
+  retryTimer=setTimeout(startWakeWord,1200);
+}
+
+function listenForCommand(){
+  if(!Recognition){
+    busy=false;
+    return;
+  }
+
+  let rec;
+  try{
+    rec=new Recognition();
+    rec.lang="uz-UZ";
+    rec.continuous=false;
+    rec.interimResults=false;
+
+    let gotResult=false;
+
+    rec.onresult=e=>{
+      gotResult=true;
+      const text=e.results[0][0].transcript;
+      busy=false;
+      command(text);
+    };
+
+    rec.onerror=()=>{
+      busy=false;
+      scheduleRestart();
+    };
+
+    rec.onend=()=>{
+      if(!gotResult){
+        busy=false;
+        scheduleRestart();
+      }
+    };
+
+    rec.start();
+  }catch(e){
+    busy=false;
+    scheduleRestart();
+  }
+}
+
+$("activate").onclick=async()=>{
+  if(!Recognition){
+    statusEl.textContent=
+      "Ovozli tanish bu brauzerda mavjud emas. Chrome'da sinab ko‘ring.";
+    return;
+  }
+
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    stream.getTracks().forEach(track=>track.stop());
+
+    activated=true;
+    $("activate").textContent="✓ ORION FAOL";
+    $("activate").disabled=true;
+    statusEl.textContent='● “Orion” deb chaqir';
+
+    startWakeWord();
+  }catch(e){
+    statusEl.textContent="Mikrofon uchun ruxsat berishing kerak.";
+  }
+};
+
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="visible"&&activated&&!busy){
+    listening=false;
+    scheduleRestart();
+  }
+});
+
+// 3D avatar
+(function(){
+  const canvas=$("avatar");
+  if(!window.THREE) return;
+
+  const scene=new THREE.Scene();
+  const camera=new THREE.PerspectiveCamera(35,1,.1,100);
+  camera.position.set(0,.65,6.8);
+
+  const renderer=new THREE.WebGLRenderer({
+    canvas,alpha:true,antialias:true
+  });
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+
+  scene.add(new THREE.HemisphereLight(0xc9efff,0x10162d,2));
+  const light=new THREE.DirectionalLight(0x78dfff,3);
+  light.position.set(3,5,5);
+  scene.add(light);
+
+  const person=new THREE.Group();
+  scene.add(person);
+
+  const skin=new THREE.MeshStandardMaterial({
+    color:0xc4eaff,roughness:.4
+  });
+  const suit=new THREE.MeshStandardMaterial({
+    color:0x208ab8,metalness:.5,roughness:.3
+  });
+  const dark=new THREE.MeshStandardMaterial({color:0x102038});
+
+  function sphere(x,y,z,sx,sy,sz,material){
+    const m=new THREE.Mesh(
+      new THREE.SphereGeometry(1,32,24),material
+    );
+    m.position.set(x,y,z);
+    m.scale.set(sx,sy,sz);
+    person.add(m);
+    return m;
+  }
+
+  function limb(a,b,r1,r2,material){
+    const A=new THREE.Vector3(...a);
+    const B=new THREE.Vector3(...b);
+    const dir=B.clone().sub(A);
+    const m=new THREE.Mesh(
+      new THREE.CylinderGeometry(r2,r1,dir.length(),20),
+      material
+    );
+    m.position.copy(A).add(B).multiplyScalar(.5);
+    m.quaternion.setFromUnitVectors(
+      new THREE.Vector3(0,1,0),dir.clone().normalize()
+    );
+    person.add(m);
+  }
+
+  // Bosh va yuz
+  sphere(0,1.05,0,.53,.62,.45,skin);
+  sphere(0,1.18,.36,.39,.36,.12,dark);
+  sphere(-.15,1.2,.465,.045,.055,.03,skin);
+  sphere(.15,1.2,.465,.045,.055,.03,skin);
+  sphere(0,.98,.475,.12,.025,.02,suit);
+
+  // Gavda va qo‘llar
+  limb([0,.52,0],[0,-.65,0],.38,.25,suit);
+  limb([-.3,.38,0],[-.65,-.18,.05],.15,.10,skin);
+  limb([.3,.38,0],[.65,-.18,.05],.15,.10,skin);
+  sphere(-.65,-.18,.05,.12,.13,.12,suit);
+  sphere(.65,-.18,.05,.12,.13,.12,suit);
+
+  // Yorqin halqa
+  const ring=new THREE.Mesh(
+    new THREE.TorusGeometry(.83,.018,8,100),
+    new THREE.MeshBasicMaterial({
+      color:0x36dfff,transparent:true,opacity:.7
+    })
+  );
+  ring.position.y=.1;
+  ring.rotation.x=1.25;
+  person.add(ring);
+
+  function resize(){
+    const w=canvas.clientWidth||320;
+    const h=canvas.clientHeight||280;
+    renderer.setSize(w,h,false);
+    camera.aspect=w/h;
+    camera.updateProjectionMatrix();
+  }
+  addEventListener("resize",resize);
+  resize();
+
+  function animate(){
+    requestAnimationFrame(animate);
+    person.rotation.y=Math.sin(Date.now()*.0006)*.13;
+    person.position.y=Math.sin(Date.now()*.0015)*.04;
+    ring.rotation.z+=.003;
+    renderer.render(scene,camera);
+  }
+  animate();
+})();
+</script>
+</body>
+</html>
